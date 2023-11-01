@@ -10,34 +10,42 @@
  */
 
 return [
-    'name'        => 'Zenderv2',
-    'description' => 'Zenderv2 integration',
+    'name'        => 'Zender',
+    'description' => 'Zender integration',
     'author'      => 'renato.carabelli@7catstudio.com',
     'version'     => '0.0.1',
     'services' => [
-        'events'  => [],
+        'events' => [
+            'mautic.zender.plugin_activate.subscriber' => [
+                'class' => 'MauticPlugin\MauticZenderBundle\EventListener\PluginActivatedEventListener',
+                'arguments' => [
+                    'mautic.lead.model.field',
+                ],
+            ],
+        ],
         'forms'   => [
         ],
         'helpers' => [],
         'other'   => [
-            'mautic.sms.transport.zenderv2' => [
-                'class'     => \MauticPlugin\MauticZenderv2Bundle\Transport\Zenderv2Transport::class,
+            'mautic.sms.transport.zender' => [
+                'class'     => \MauticPlugin\MauticZenderBundle\Transport\ZenderTransport::class,
                 'arguments' => [
                     'mautic.helper.integration',
                     'monolog.logger.mautic',
                     'mautic.http.client',
+                    'doctrine.orm.entity_manager'  // <-- Add this line
                 ],
-                'alias'        => 'mautic.sms.config.zenderv2.transport',
+                'alias'        => 'mautic.sms.config.zender.transport',
                 'tag'          => 'mautic.sms_transport',
                 'tagArguments' => [
-                    'integrationAlias' => 'Zenderv2',
+                    'integrationAlias' => 'Zender',
                 ],
             ],
         ],
         'models'       => [],
         'integrations' => [
-            'mautic.integration.zenderv2' => [
-                'class' => \MauticPlugin\MauticZenderv2Bundle\Integration\Zenderv2Integration::class,
+            'mautic.integration.zender' => [
+                'class' => \MauticPlugin\MauticZenderBundle\Integration\ZenderIntegration::class,
                 'arguments' => [
                     'event_dispatcher',
                     'mautic.helper.cache_storage',
@@ -63,13 +71,13 @@ return [
     'menu'       => [
         'main' => [
             'items' => [
-                'mautic.zenderv2.smses' => [  // Unique key for Zenderv2
-                    'route'    => 'mautic_sms_index',  // Update this if you have a custom route for Zenderv2
+                'mautic.zender.smses' => [  // Unique key for Zender
+                    'route'    => 'mautic_sms_index',  // Update this if you have a custom route for Zender
                     'access'   => ['sms:smses:viewown', 'sms:smses:viewother'],
                     'parent'   => 'mautic.core.channels',
                     'checks'   => [
                         'integration' => [
-                            'Zenderv2' => [
+                            'Zender' => [
                                 'enabled' => true,
                             ],
                         ],
