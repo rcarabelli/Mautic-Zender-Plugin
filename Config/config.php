@@ -14,6 +14,17 @@ return [
     'description' => 'Zender integration',
     'author'      => 'renato.carabelli@7catstudio.com',
     'version'     => '0.0.1',
+    'routes' => [
+        'public' => [
+            'mautic_zender_receive_webhook' => [
+                'path'       => '/zender/receive/{key}/{phone}/{message}/{time}/{datetime}',
+                'controller' => 'mautic.zender.controller.webhook:receiveAction',
+                'method'     => 'GET',
+            ],
+        ],
+    ],
+
+    
     'services' => [
         'events' => [
             'mautic.zender.plugin_activate.subscriber' => [
@@ -21,6 +32,15 @@ return [
                 'arguments' => [
                     'mautic.lead.model.field',
                 ],
+            ],
+        ],
+        'controllers' => [
+            'mautic.zender.controller.webhook' => [
+                'class'     => 'MauticPlugin\MauticZenderBundle\Controller\ZenderWebhookController',
+                'arguments' => [
+                    '@monolog.logger.mautic', // Correct service for LoggerInterface
+                ],
+                'public'    => true,
             ],
         ],
         'forms'   => [
@@ -67,7 +87,7 @@ return [
             ],
         ],
     ],
-    'routes'     => [],
+
     'menu'       => [
         'main' => [
             'items' => [
