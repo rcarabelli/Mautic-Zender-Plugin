@@ -11,12 +11,13 @@ This plugin lets you send WhatsApp messages using "Zender" as a brige between Ma
 so you can use standard "WhatsApp" and "WhatsApp business" accounts with it and you won't get charged for sending each message like what happens with "WhatsApp Business API".
 Of course it has its limits and they are explained in "Things to consider" some lines below.
 
-Once you have this installed and running, you will be able to use the "Text Messages" channel to 
+Once you have this installed and running, you will be able to use the "Text Messages" channel to send WhatsApp messages using Zender system as a bridge and any standard WhatsApp and WhatsApp Business accounts (like how it works with WhatsApp Web)
 
 ## What happens on installation
-1. Copy all needed plugin files
+1. A new plugin in the directory /plugins/MauticZenderBundle/ will be copied
 2. Creates a new "custom field" called "ID WhatsApp in Zender/id_whatsapp_in_zender" where the Zender token of a WhatsApp number should be placed
 3. Creates a Plugin option in "plugins" where you will have to fill 3 form fields to activate this (Zender API Key, Zender API URL, Shortener Link)
+4. The Text Message Channel will be changed to a WhatsApp sending Channel (using Zender platform as the bridge)
 
 ## Installation
 1. Download the plugin, unzip in your plugins folder
