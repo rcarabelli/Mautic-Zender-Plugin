@@ -1,4 +1,4 @@
-Mautic Whatsapp (via Zender) Plugin v.1.1.0
+## Mautic Whatsapp (via Zender) Plugin v.1.1.0
 This plugin replaces the SMS channel and allows you to send messages to Whatsapp
 using a Zender account (https://codecanyon.net/item/zender-android-mobile-devices-as-sms-gateway-saas-platform/26594230).
 Intended for >= Mautic 5.1
