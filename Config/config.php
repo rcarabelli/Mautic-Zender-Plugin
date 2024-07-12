@@ -69,8 +69,17 @@ return [
             ],
         ],
     ],
-    'routes'     => [],
-    'menu'       => [
+    'routes' => [
+        'api' => [
+            'mautic_zender_message_status' => [
+                'path' => '/zender/message-status',
+                'controller' => 'MauticPlugin\MauticZenderBundle\Controller\ApiController::zenderMessageStatus',
+                'method' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
+                'defaults' => [],
+            ],
+        ],
+    ],
+    'menu' => [
         'main' => [
             'items' => [
                 'mautic.zender.smses' => [  

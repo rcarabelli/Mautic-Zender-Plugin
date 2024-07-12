@@ -1,14 +1,5 @@
 <?php
 
-/*
- * @copyright   2014 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
-
 namespace MauticPlugin\MauticZenderBundle\Integration;
 
 use Mautic\PluginBundle\Integration\AbstractIntegration;
@@ -20,12 +11,14 @@ use Symfony\Component\Validator\Constraints\NotBlank;
  */
 class ZenderIntegration extends AbstractIntegration
 {
+    const AUTH_TYPE_NONE = 'none';  // Definir la constante aquí
+
     /**
      * {@inheritdoc}
      *
      * @return string
      */
-    public function getName()
+    public function getName(): string
     {
         return 'Zender';
     }
@@ -35,7 +28,7 @@ class ZenderIntegration extends AbstractIntegration
      *
      * @return string
      */
-    public function getIcon()
+    public function getIcon(): string
     {
         return 'plugins/MauticZenderBundle/Assets/img/7cats-isotipo-red-200x200.png';
     }
@@ -45,7 +38,7 @@ class ZenderIntegration extends AbstractIntegration
      *
      * @return array
      */
-    public function getSecretKeys()
+    public function getSecretKeys(): array
     {
         return [];
     }
@@ -55,12 +48,13 @@ class ZenderIntegration extends AbstractIntegration
      *
      * @return array
      */
-    public function getRequiredKeyFields()
+    public function getRequiredKeyFields(): array
     {
         return [
             'zender_api_key' => 'mautic.plugin.zender.api_key',
             'zender_api_url' => 'mautic.plugin.zender.api_url',
             'shortener_url'  => 'mautic.plugin.zender.shortener_url',
+            'webhook_secret' => 'mautic.plugin.zender.webhook_secret',
         ];
     }
 
@@ -75,13 +69,39 @@ class ZenderIntegration extends AbstractIntegration
         ];
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @return string
-     */
-    public function getAuthenticationType()
+    public function appendToForm(&$builder, $data, $formArea): void
     {
-        return 'none';
+        // Obtener el valor actual del webhook_secret
+        $currentSecret = isset($data['webhook_secret']) ? $data['webhook_secret'] : $this->generateSecret();
+
+        $builder->add(
+            'webhook_secret',
+            TextType::class,
+            [
+                'label'      => 'mautic.plugin.zender.webhook_secret',
+                'label_attr' => ['class' => 'control-label'],
+                'attr'       => [
+                    'class' => 'form-control',
+                    'id'    => 'webhook_secret',
+                    'readonly' => true,
+                ],
+                'data' => $currentSecret,
+                'constraints' => [
+                    new NotBlank(
+                        ['message' => 'mautic.core.value.required']
+                    ),
+                ],
+            ]
+        );
+    }
+
+    private function generateSecret($length = 40): string
+    {
+        return bin2hex(random_bytes($length / 2));
+    }
+
+    public function getAuthenticationType(): string
+    {
+        return self::AUTH_TYPE_NONE;
     }
 }

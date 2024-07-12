@@ -1,0 +1,4 @@
+services:
+    MauticPlugin\MauticZenderBundle\Controller\ApiController:
+        public: true
+        tags: ['controller.service_arguments']
