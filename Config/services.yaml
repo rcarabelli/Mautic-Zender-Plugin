@@ -1,0 +1,68 @@
+services:
+    mautic.zender.command.sync_messages:
+        class: MauticPlugin\MauticZenderBundle\Command\SyncMessagesCommand
+        arguments:
+            - '@doctrine.orm.entity_manager'
+            - '@mautic.helper.integration'
+            - '@monolog.logger.mautic'
+        tags:
+            - { name: 'console.command' }
+
+    mautic.zender.plugin_activate.subscriber:
+        class: MauticPlugin\MauticZenderBundle\EventListener\PluginInstallUpdateEventListener
+        arguments:
+            - '@doctrine.orm.entity_manager'
+            - '@monolog.logger.mautic'
+            - '@mautic.lead.model.field'
+
+    mautic.zender.helper.sync_messages:
+        class: MauticPlugin\MauticZenderBundle\Helper\SyncMessagesHelper
+        arguments:
+            - '@doctrine.orm.entity_manager'
+
+    mautic.sms.transport.zender:
+        class: MauticPlugin\MauticZenderBundle\Transport\ZenderTransport
+        arguments:
+            - '@mautic.helper.integration'
+            - '@monolog.logger.mautic'
+            - '@mautic.http.client'
+            - '@doctrine.orm.entity_manager'
+        alias: mautic.sms.config.zender.transport
+        tags:
+            - { name: mautic.sms_transport, integrationAlias: Zender }
+
+    mautic.integration.zender:
+        class: MauticPlugin\MauticZenderBundle\Integration\ZenderIntegration
+        arguments:
+            - '@event_dispatcher'
+            - '@mautic.helper.cache_storage'
+            - '@doctrine.orm.entity_manager'
+            - '@session'
+            - '@request_stack'
+            - '@router'
+            - '@translator'
+            - '@logger'
+            - '@mautic.helper.encryption'
+            - '@mautic.lead.model.lead'
+            - '@mautic.lead.model.company'
+            - '@mautic.helper.paths'
+            - '@mautic.core.model.notification'
+            - '@mautic.lead.model.field'
+            - '@mautic.plugin.model.integration_entity'
+            - '@mautic.lead.model.dnc'
+
+    logger.zender:
+        class: Monolog\Logger
+        arguments: [ 'zender' ]
+        calls:
+            - [ pushHandler, [ '@logger.zender.handler' ] ]
+
+    logger.zender.handler:
+        class: Monolog\Handler\StreamHandler
+        arguments:
+            - '/home/cats/public_html/logs/zender.log'
+            - 'DEBUG'
+            
+    MauticPlugin\MauticZenderBundle\Integration\ZenderIntegration:
+        arguments:
+            $translator: '@translator'
