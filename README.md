@@ -58,7 +58,7 @@ Zender also have a nice API, so each WhatsApp answer you get, can also be proces
    (see rates here: https://developers.facebook.com/docs/whatsapp/pricing)
 7. This is not to replace WhatsApp Business API, but it can help small budget/team projects with rather small DBs (less than 10K WhatsApps). Is a one time shot small cost and a dependable solution
 8. Is an AWESOME solution for for some alerts and specially to recover shopping carts and store communications or even to keep your company team updated of news and important messages that need personalization or segmentation (for this we have a
-   platform called "JANUS" https://www.janus.plus and it helps medium teams in an awesome way, medium teams are temas with less than 5k members)
+   platform called "JANUS" https://www.janus.plus and it helps medium teams in an awesome way, medium teams are teams with less than 5k members)
    
 ## License
 Copyright (C) 2024 7 Cats Studio Corp
