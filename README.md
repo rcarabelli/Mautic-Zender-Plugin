@@ -163,7 +163,7 @@ Replace /path/to/your/mautic with the actual path to your Mautic installation.
 - It can also be used for alerts, shopping cart recovery, store communications, and team updates.
 
 ## License
-Copyright (C) 2024 7 Cats Studio Corp
+Copyright (C) 2024 7 Cats Studio Corp - 7 Cats Studio SAC
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
