@@ -584,6 +584,26 @@ Technical plugin:
 
 Author/support identity is maintained in `Config/config.php`.
 
+## Copyright and attribution
+
+Copyright (C) 2026 **7 Cats Studio Corp.**
+
+Original project-specific contributions developed by 7 Cats Studio Corp. are
+copyright 7 Cats Studio Corp., except where another copyright notice applies.
+
+Developed and maintained by **7 Cats Studio Corp.**
+
+The project remains licensed under **GNU GPLv3**. For original material
+copyright 7 Cats Studio Corp., an attribution requirement under GPLv3
+Section 7(b) requires preservation of reasonable legal notices and author
+attribution identifying 7 Cats Studio Corp. as the original developer of that
+material.
+
+Mautic and other third-party copyright notices remain with their respective
+copyright holders and must be preserved where applicable.
+
+See `LICENSE` and `ATTRIBUTION.md`.
+
 ## License
 
 GNU GPLv3. See `LICENSE`.
