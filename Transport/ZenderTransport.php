@@ -11,6 +11,11 @@ use Mautic\LeadBundle\Entity\Lead;
 use Mautic\PageBundle\Entity\Redirect;
 use Mautic\PluginBundle\Helper\IntegrationHelper;
 use Mautic\SmsBundle\Api\AbstractSmsApi;
+use Mautic\SmsBundle\Entity\Stat;
+use MauticPlugin\MauticZenderBundle\Service\DispatchAccountRepository;
+use MauticPlugin\MauticZenderBundle\Service\DispatchConfigRepository;
+use MauticPlugin\MauticZenderBundle\Service\DispatchQueueRepository;
+use MauticPlugin\MauticZenderBundle\Service\WhatsAppProviderEnvelopeBuilder;
 use Psr\Log\LoggerInterface;
 
 class ZenderTransport extends AbstractSmsApi
@@ -26,17 +31,30 @@ class ZenderTransport extends AbstractSmsApi
     private $sender_id;
     protected $connected;
     private $entityManager;
+    private array $lastProviderDiagnostic = [];
+    private DispatchAccountRepository $dispatchAccountRepository;
+    private DispatchConfigRepository $dispatchConfigRepository;
+    private DispatchQueueRepository $dispatchQueueRepository;
+    private ?WhatsAppProviderEnvelopeBuilder $providerEnvelopeBuilder;
 
     public function __construct(
         IntegrationHelper $integrationHelper,
         LoggerInterface $logger,
         Client $client,
-        EntityManager $entityManager
+        EntityManager $entityManager,
+        DispatchAccountRepository $dispatchAccountRepository,
+        DispatchConfigRepository $dispatchConfigRepository,
+        DispatchQueueRepository $dispatchQueueRepository,
+        ?WhatsAppProviderEnvelopeBuilder $providerEnvelopeBuilder = null
     ) {
         $this->integrationHelper = $integrationHelper;
         $this->logger            = $logger;
         $this->client            = $client;
         $this->entityManager     = $entityManager;
+        $this->dispatchAccountRepository = $dispatchAccountRepository;
+        $this->dispatchConfigRepository = $dispatchConfigRepository;
+        $this->dispatchQueueRepository  = $dispatchQueueRepository;
+        $this->providerEnvelopeBuilder = $providerEnvelopeBuilder;
         $this->connected         = false;
 
         $integration = $this->integrationHelper->getIntegrationObject('Zender');
@@ -92,7 +110,7 @@ class ZenderTransport extends AbstractSmsApi
         return $content;
     }
 
-    public function sendSms(Lead $contact, $content)
+    public function sendSms(Lead $contact, $content, Stat $stat = null)
     {
         // 1) Reemplaza URLs de /r/ por su destino real si son media
         $content = $this->CheckIfMessageHaveMediaLinks($content);
@@ -140,11 +158,114 @@ class ZenderTransport extends AbstractSmsApi
             return false;
         }
     
-        // 7) Envía
+        // 7) Controlled queue branch. Disabled by default.
+        if ($this->dispatchConfigRepository->isEnabled()) {
+            $statId = $stat && method_exists($stat, 'getId') ? $stat->getId() : null;
+            $trackingHash = $stat && method_exists($stat, 'getTrackingHash')
+                ? $stat->getTrackingHash()
+                : null;
+            $source = $stat && method_exists($stat, 'getSource') ? $stat->getSource() : null;
+            $sourceId = $stat && method_exists($stat, 'getSourceId') ? $stat->getSourceId() : null;
+            $sms = $stat && method_exists($stat, 'getSms') ? $stat->getSms() : null;
+            $smsId = $sms && method_exists($sms, 'getId') ? $sms->getId() : null;
+
+            if ($statId) {
+                $dedupeSeed = 'stat_id:'.$statId;
+            } elseif ($trackingHash) {
+                $dedupeSeed = 'tracking:'.$trackingHash;
+            } else {
+                $dedupeSeed = 'untracked:'.bin2hex(random_bytes(16));
+            }
+
+            $queueStatus = $this->dispatchAccountRepository->isEnabledAccount(
+                (string) $accountIdInZender
+            ) ? 'pending' : 'blocked_account';
+
+            $queued = $this->dispatchQueueRepository->enqueue([
+                'dedupe_key'         => hash('sha256', $dedupeSeed),
+                'contact_id'         => (int) $contact->getId(),
+                'sms_id'             => $smsId,
+                'stat_tracking_hash' => $trackingHash,
+                'source'             => $source,
+                'source_id'          => $sourceId,
+                'recipient'          => $e164,
+                'account_id'         => (string) $accountIdInZender,
+                'content'            => (string) $content,
+                'status'             => $queueStatus,
+                'priority'           => 2,
+            ]);
+
+            if ($queued) {
+                $this->logger->info('[ZENDER] Message accepted into controlled queue', [
+                    'contact_id'   => $contact->getId(),
+                    'sms_id'       => $smsId,
+                    'queue_status' => $queueStatus,
+                    'account_hash' => hash('sha256', (string) $accountIdInZender),
+                ]);
+
+                return true;
+            }
+
+            $this->logger->error('[ZENDER] Controlled queue rejected message', [
+                'contact_id' => $contact->getId(),
+                'sms_id'     => $smsId,
+            ]);
+
+            return false;
+        }
+
+        // Direct path preserved while controlled dispatch is disabled.
         return $this->send($e164, $content, $accountIdInZender, [
             'contactId' => $contact->getId(),
             'zenderUrl' => $this->zenderApiUrl,
         ]);
+    }
+
+    public function dispatchQueuedMessage(
+        string $e164Number,
+        string $content,
+        string $accountIdInZender,
+        array $context = []
+    ) {
+        // ATTEMPT_RECORDING_3B2_DIAGNOSTIC_RESET_BEGIN
+        $this->lastProviderDiagnostic = [];
+
+        if (!$this->connected && !$this->configureConnection()) {
+            $this->lastProviderDiagnostic = [
+                'classification' => 'integration_not_configured',
+                'success' => false,
+                'provider_request_started' => false,
+                'provider_message_id' => null,
+            ];
+
+            return false;
+        }
+
+        if (empty($this->zenderApiUrl)) {
+            $this->lastProviderDiagnostic = [
+                'classification' => 'provider_url_missing',
+                'success' => false,
+                'provider_request_started' => false,
+                'provider_message_id' => null,
+            ];
+
+            return false;
+        }
+
+        // ATTEMPT_RECORDING_3B2_DIAGNOSTIC_RESET_END
+
+        return $this->send(
+            $e164Number,
+            $content,
+            $accountIdInZender,
+            array_merge(
+                $context,
+                [
+                    'zenderUrl' => $this->zenderApiUrl,
+                    'enforceAccountCooldown' => true,
+                ]
+            )
+        );
     }
 
     protected function shortenUrl($longUrl)
@@ -198,23 +319,99 @@ class ZenderTransport extends AbstractSmsApi
 
     protected function send($e164Number, $content, $accountIdInZender, array $ctx = [])
     {
-        // Limpia %3D colgantes (textos con tokens de Mautic)
-        $content = preg_replace('/(%3D)(?=[^a-zA-Z0-9]|$)/', '', $content);
-    
-        // Payload base
+        $content = preg_replace(
+            '/(%3D)(?=[^a-zA-Z0-9]|$)/',
+            '',
+            (string) $content
+        ) ?? (string) $content;
+
+        $whatsappMessageId = null;
+        if (
+            isset($ctx['whatsappMessageId'])
+            && null !== $ctx['whatsappMessageId']
+            && (int) $ctx['whatsappMessageId'] > 0
+        ) {
+            $whatsappMessageId = (int) $ctx['whatsappMessageId'];
+        }
+
+        $assetId = null;
+        if (
+            isset($ctx['assetId'])
+            && null !== $ctx['assetId']
+            && (int) $ctx['assetId'] > 0
+        ) {
+            $assetId = (int) $ctx['assetId'];
+        }
+
+        $envelope = null;
+
+        if (
+            null !== $whatsappMessageId
+            || null !== $assetId
+        ) {
+            if (!$this->providerEnvelopeBuilder instanceof WhatsAppProviderEnvelopeBuilder) {
+                $this->lastProviderDiagnostic = [
+                    'classification' => 'transport_exception',
+                    'success' => false,
+                    'provider_request_started' => false,
+                    'provider_message_id' => null,
+                    'exception_class' => \RuntimeException::class,
+                    'exception' => 'provider_envelope_builder_unavailable',
+                ];
+
+                return false;
+            }
+
+            try {
+                $envelope = $this->providerEnvelopeBuilder->build(
+                    $whatsappMessageId,
+                    $content,
+                    $assetId
+                );
+            } catch (\Throwable $e) {
+                $this->lastProviderDiagnostic = [
+                    'classification' => 'transport_exception',
+                    'success' => false,
+                    'provider_request_started' => false,
+                    'provider_message_id' => null,
+                    'exception_class' => get_class($e),
+                    'exception' => mb_substr($e->getMessage(), 0, 500),
+                ];
+
+                $this->logger->error(
+                    '[ZENDER] Provider envelope resolution failed',
+                    $this->lastProviderDiagnostic
+                );
+
+                return false;
+            }
+        }
+
         $payload = [
-            'secret'    => $this->zender_api_key,
-            'account'   => $accountIdInZender,
-            'recipient' => $e164Number, // Zender acepta E.164 con '+'
-            'type'      => self::ZENDER_TYPE,
-            'message'   => $content,
+            'secret' => $this->zender_api_key,
+            'account' => $accountIdInZender,
+            'recipient' => $e164Number,
+            'type' => self::ZENDER_TYPE,
+            'message' => $content,
         ];
-    
-        // Si hay media, ajusta payload
-        $content = $this->CheckIfMessageHaveMediaLinks($content);
-        $this->prepareMediaPayload($content, $payload);
-    
-        // Shortener opcional
+
+        $source = trim((string) ($ctx['source'] ?? ''));
+        if (in_array(
+            $source,
+            [
+                'whatsapp.demo',
+                'whatsapp.contact.profile',
+            ],
+            true
+        )) {
+            $payload['priority'] = 1;
+        }
+
+        if (null === $envelope) {
+            $content = $this->CheckIfMessageHaveMediaLinks($content);
+            $this->prepareMediaPayload($content, $payload);
+        }
+
         $urlPattern = '#\bhttps?://[^\s()<>]+(?:\([\w\d]+\)|([^[:punct:]\s]|/))#';
         if (preg_match_all($urlPattern, $content, $urls)) {
             foreach ($urls[0] as $url) {
@@ -222,61 +419,343 @@ class ZenderTransport extends AbstractSmsApi
                 $content = str_replace($url, $short, $content);
             }
         }
+
         $payload['message'] = $content;
-    
-        // Log de salida (enmascara secret)
-        /*
-        $this->logger->info('[ZENDER] Preparando POST', [
-            'to'      => $e164Number,
-            'account' => $accountIdInZender,
-            'type'    => $payload['type'],
-            'url'     => $ctx['zenderUrl'] ?? $this->zenderApiUrl,
-            'payload' => array_merge($payload, ['secret' => $this->mask($payload['secret'])]),
-        ]);
-        */
-    
-        try {
-            // Igual que tu curl: application/x-www-form-urlencoded
-            $response = $this->client->request('POST', rtrim($this->zenderApiUrl, '/'), [
-                'form_params' => $payload,
-                'timeout'     => 20,
-            ]);
-    
-            $status = $response->getStatusCode();
-            $body   = (string) $response->getBody();
-    
-            /*
-            $this->logger->info('[ZENDER] Respuesta', [
-                'status' => $status,
-                'body'   => $body,
-            ]);
-            */
-    
-            if ($status < 200 || $status >= 300) {
-                // $this->logger->error('[ZENDER] HTTP no-2xx', ['status' => $status, 'body' => $body]);
-                return false;
+
+        if (null !== $envelope) {
+            $envelope['message'] = $content;
+            $payload['type'] = (string) $envelope['type'];
+
+            if ('media' === $envelope['type']) {
+                $payload['media_type'] = (string) $envelope['media_type'];
+            } elseif ('document' === $envelope['type']) {
+                $payload['document_name'] = (string) $envelope['document_name'];
+                $payload['document_type'] = (string) $envelope['document_type'];
             }
-    
-            $data = json_decode($body, true);
-            if (!is_array($data)) {
-                // $this->logger->error('[ZENDER] JSON inválido', ['body' => $body]);
-                return false;
-            }
-    
-            // Éxito si status === 200 o 'success'
-            if ((isset($data['status']) && $data['status'] === 200)
-                || (isset($data['status']) && $data['status'] === 'success')) {
-                return true;
-            }
-    
-            // $this->logger->error('[ZENDER] API reportó error', ['data' => $data]);
-            return false;
-        } catch (\Throwable $e) {
-            // $this->logger->error('[ZENDER] Excepción al llamar API', [
-            //     'error' => $e->getMessage(),
-            // ]);
-            return false;
         }
+
+        $cooldown = null;
+        if (true === ($ctx['enforceAccountCooldown'] ?? false)) {
+            $config = $this->dispatchConfigRepository->get();
+            $cooldown = $this->dispatchAccountRepository
+                ->beginProviderAttemptCooldown(
+                    (string) $accountIdInZender,
+                    (int) ($config['dispatch_interval_seconds'] ?? 165)
+                );
+
+            if (null === $cooldown) {
+                $this->lastProviderDiagnostic = [
+                    'classification' => 'cooldown_not_eligible',
+                    'success' => false,
+                    'provider_request_started' => false,
+                    'provider_message_id' => null,
+                ];
+
+                $this->logger->info(
+                    '[ZENDER] Provider request skipped by account cooldown',
+                    [
+                        'classification' => 'cooldown_not_eligible',
+                        'provider_request_started' => false,
+                        'account_hash' => hash('sha256', (string) $accountIdInZender),
+                    ]
+                );
+
+                return false;
+            }
+        }
+
+        $openedStream = null;
+
+        try {
+            $request = $this->buildMultipartRequest($payload, $envelope);
+            $openedStream = $request['stream'];
+
+            $response = $this->client->request(
+                'POST',
+                rtrim($this->zenderApiUrl, '/'),
+                [
+                    'multipart' => $request['multipart'],
+                    'timeout' => 20,
+                    'http_errors' => false,
+                    'allow_redirects' => false,
+                ]
+            );
+
+            $status = $response->getStatusCode();
+            $body = (string) $response->getBody();
+            $contentType = $response->getHeaderLine('Content-Type');
+
+            $this->lastProviderDiagnostic = $this->buildProviderDiagnostic(
+                $status,
+                $body,
+                $contentType,
+                (string) $accountIdInZender,
+                (string) $e164Number
+            );
+            $this->lastProviderDiagnostic['send_source'] = $source;
+            $this->lastProviderDiagnostic['provider_priority'] = (
+                array_key_exists('priority', $payload)
+                    ? (int) $payload['priority']
+                    : null
+            );
+            $this->lastProviderDiagnostic['provider_request_started'] = true;
+            $this->lastProviderDiagnostic['cooldown_started_at'] = (
+                $cooldown['last_attempt_started_at'] ?? null
+            );
+            $this->lastProviderDiagnostic['next_eligible_at'] = (
+                $cooldown['next_eligible_at'] ?? null
+            );
+
+            $this->logger->info(
+                '[ZENDER] Provider response diagnostic',
+                $this->lastProviderDiagnostic
+            );
+
+            return true === ($this->lastProviderDiagnostic['success'] ?? false);
+        } catch (\Throwable $e) {
+            $this->lastProviderDiagnostic = [
+                'classification' => 'transport_exception',
+                'success' => false,
+                'provider_request_started' => true,
+                'provider_message_id' => null,
+                'cooldown_started_at' => (
+                    $cooldown['last_attempt_started_at'] ?? null
+                ),
+                'next_eligible_at' => (
+                    $cooldown['next_eligible_at'] ?? null
+                ),
+                'exception_class' => get_class($e),
+                'exception' => mb_substr($e->getMessage(), 0, 500),
+            ];
+
+            $this->logger->error(
+                '[ZENDER] Provider transport exception',
+                $this->lastProviderDiagnostic
+            );
+
+            return false;
+        } finally {
+            if (is_resource($openedStream)) {
+                fclose($openedStream);
+            }
+        }
+    }
+
+    /**
+     * @return array{multipart:array<int, array<string, mixed>>, stream:mixed}
+     */
+    private function buildMultipartRequest(
+        array $payload,
+        ?array $envelope
+    ): array {
+        $multipart = [];
+
+        foreach ($payload as $name => $value) {
+            if (null === $value || '' === (string) $value) {
+                continue;
+            }
+
+            if (
+                null !== $envelope
+                && in_array($name, ['media_file', 'document_file'], true)
+            ) {
+                continue;
+            }
+
+            if (
+                null === $envelope
+                && 'media_file' === $name
+                && isset($payload['media_url'])
+            ) {
+                continue;
+            }
+
+            $multipart[] = [
+                'name' => (string) $name,
+                'contents' => (string) $value,
+            ];
+        }
+
+        if (
+            null === $envelope
+            || !in_array($envelope['type'] ?? null, ['media', 'document'], true)
+        ) {
+            return [
+                'multipart' => $multipart,
+                'stream' => null,
+            ];
+        }
+
+        $filePath = (string) ($envelope['file_path'] ?? '');
+        $stream = @fopen($filePath, 'rb');
+
+        if (!is_resource($stream)) {
+            throw new \RuntimeException(
+                'provider_envelope_file_stream_open_failed'
+            );
+        }
+
+        $fieldName = 'media' === $envelope['type']
+            ? 'media_file'
+            : 'document_file';
+
+        $filePart = [
+            'name' => $fieldName,
+            'contents' => $stream,
+            'filename' => (string) (
+                $envelope['file_name'] ?? basename($filePath)
+            ),
+        ];
+
+        $mime = trim((string) ($envelope['mime'] ?? ''));
+        if ('' !== $mime) {
+            $filePart['headers'] = [
+                'Content-Type' => $mime,
+            ];
+        }
+
+        $multipart[] = $filePart;
+
+        return [
+            'multipart' => $multipart,
+            'stream' => $stream,
+        ];
+    }
+
+    public function getLastProviderDiagnostic(): array
+    {
+        return $this->lastProviderDiagnostic;
+    }
+
+    public function diagnoseProviderResponseForTest(
+        int $status,
+        string $body,
+        string $contentType = 'application/json'
+    ): array {
+        return $this->buildProviderDiagnostic(
+            $status,
+            $body,
+            $contentType,
+            'synthetic-account',
+            '+000000000000'
+        );
+    }
+
+    private function buildProviderDiagnostic(
+        int $status,
+        string $body,
+        string $contentType,
+        string $accountId,
+        string $recipient
+    ): array {
+        $decoded = json_decode($body, true);
+        $jsonValid = is_array($decoded);
+        $statusValue = $jsonValid && array_key_exists('status', $decoded)
+            ? $decoded['status']
+            : null;
+        $messageValue = $jsonValid
+            && array_key_exists('message', $decoded)
+            && is_scalar($decoded['message'])
+                ? trim((string) $decoded['message'])
+                : '';
+        $normalizedMessage = strtolower($messageValue);
+        $normalizedMessage = preg_replace(
+            '/\s+/',
+            ' ',
+            $normalizedMessage
+        ) ?? $normalizedMessage;
+        $normalizedMessage = rtrim(
+            trim($normalizedMessage),
+            " \t\n\r\0\x0B!."
+        );
+        $accountDisconnected = $jsonValid
+            && in_array($statusValue, [500, '500'], true)
+            && false === ($decoded['data'] ?? null)
+            && 'whatsapp account is disconnected' === $normalizedMessage;
+
+        $providerMessageId = null;
+        if (
+            $jsonValid
+            && isset($decoded['data'])
+            && is_array($decoded['data'])
+            && array_key_exists('messageId', $decoded['data'])
+            && is_scalar($decoded['data']['messageId'])
+        ) {
+            $candidate = trim((string) $decoded['data']['messageId']);
+            if ('' !== $candidate) {
+                $providerMessageId = mb_substr($candidate, 0, 191);
+            }
+        }
+
+        $success = $status >= 200
+            && $status < 300
+            && (200 === $statusValue || 'success' === $statusValue);
+
+        if ($status < 200 || $status >= 300) {
+            $classification = 'http_non_2xx';
+        } elseif (!$jsonValid) {
+            $classification = 'http_2xx_invalid_json';
+        } elseif ($accountDisconnected) {
+            $classification = 'account_disconnected';
+        } elseif (200 === $statusValue) {
+            $classification = 'legacy_status_200';
+        } elseif ('success' === $statusValue) {
+            $classification = 'legacy_status_success';
+        } else {
+            $classification = 'http_2xx_unrecognized_json';
+        }
+
+        $jsonKeys = [];
+        if ($jsonValid) {
+            $jsonKeys = array_slice(array_map('strval', array_keys($decoded)), 0, 30);
+            sort($jsonKeys);
+        }
+
+        return [
+            'classification'    => $classification,
+            'success'           => $success,
+            'http_status'       => $status,
+            'content_type'      => mb_substr($contentType, 0, 200),
+            'body_bytes'        => strlen($body),
+            'body_sha256'       => hash('sha256', $body),
+            'body_preview'      => $this->sanitizeProviderBody($body, $accountId, $recipient),
+            'json_valid'        => $jsonValid,
+            'json_keys'         => $jsonKeys,
+            'json_status_type'  => null === $statusValue ? 'missing' : gettype($statusValue),
+            'json_status_value'   => is_scalar($statusValue)
+                ? mb_substr((string) $statusValue, 0, 200)
+                : (null === $statusValue ? 'missing' : '[non-scalar]'),
+            'json_message_value'  => '' !== $messageValue
+                ? mb_substr($messageValue, 0, 300)
+                : 'missing',
+            'provider_message_id' => $providerMessageId,
+        ];
+    }
+
+    private function sanitizeProviderBody(string $body, string $accountId, string $recipient): string
+    {
+        $safe = str_replace(
+            array_filter([(string) $this->zender_api_key, $accountId, $recipient]),
+            '[REDACTED]',
+            $body
+        );
+
+        $safe = preg_replace(
+            '/([A-Za-z0-9._%+\\-])[A-Za-z0-9._%+\\-]*(@[A-Za-z0-9.\\-]+)/',
+            '$1***$2',
+            $safe
+        ) ?? $safe;
+
+        $safe = preg_replace_callback(
+            '/(?<![A-Za-z0-9])\\+?\\d[\\d .()\\-]{7,}\\d/',
+            static function (array $matches): string {
+                $digits = preg_replace('/\\D+/', '', $matches[0]) ?? '';
+                return strlen($digits) >= 8 ? '***'.substr($digits, -4) : $matches[0];
+            },
+            $safe
+        ) ?? $safe;
+
+        return mb_substr($safe, 0, 1000);
     }
 
     // Enmascara secretos al loguear

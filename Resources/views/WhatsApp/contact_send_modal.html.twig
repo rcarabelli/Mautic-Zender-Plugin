@@ -1,0 +1,97 @@
+<div class="pa-md">
+    {{ form_start(form) }}
+
+    <div class="alert alert-info mb-md">
+        <strong>
+            {{ contact.primaryIdentifier|purify }}
+        </strong>
+        <br>
+        {{ 'mautic.zender.whatsapp.contact.send.recipient'|trans }}:
+        {{ masked_phone }}
+    </div>
+
+    {{ form_row(form.content) }}
+
+    <div class="form-group"
+         data-whatsapp-placeholder-editor="contactfield">
+        <label class="control-label"
+               for="zender-whatsapp-contact-placeholder-select">
+            {{ 'mautic.zender.whatsapp.contact.send.placeholders.label'|trans }}
+        </label>
+
+        <select class="form-control"
+                id="zender-whatsapp-contact-placeholder-select"
+                data-whatsapp-contact-placeholder-select
+                onchange="
+                    var textarea = document.getElementById('{{ form.content.vars.id|e('html_attr') }}');
+                    var token = this.value;
+                    if (!textarea || !token) {
+                        this.value = '';
+                        return;
+                    }
+                    var start = typeof textarea.selectionStart === 'number'
+                        ? textarea.selectionStart
+                        : textarea.value.length;
+                    var end = typeof textarea.selectionEnd === 'number'
+                        ? textarea.selectionEnd
+                        : start;
+                    var before = textarea.value.slice(0, start);
+                    var after = textarea.value.slice(end);
+                    var previous = before.length
+                        ? before.charAt(before.length - 1)
+                        : '';
+                    var following = after.length
+                        ? after.charAt(0)
+                        : '';
+                    var prefix = previous
+                        && previous !== ' '
+                        && previous !== '\n'
+                        ? ' '
+                        : '';
+                    var suffix = following
+                        && following !== ' '
+                        && following !== '\n'
+                        ? ' '
+                        : '';
+                    var inserted = prefix + token + suffix;
+                    textarea.value = before + inserted + after;
+                    textarea.focus();
+                    var cursor = start + inserted.length;
+                    if (textarea.setSelectionRange) {
+                        textarea.setSelectionRange(cursor, cursor);
+                    }
+                    textarea.dispatchEvent(
+                        new Event('input', {bubbles: true})
+                    );
+                    this.value = '';
+                ">
+            <option value="">
+                {{ 'mautic.zender.whatsapp.contact.send.placeholders.select'|trans }}
+            </option>
+
+            {% for placeholder in placeholder_options %}
+                <option value="{{ placeholder.token|e('html_attr') }}">
+                    {{ placeholder.label }}
+                    — {{ placeholder.alias }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <p class="help-block">
+            {{ 'mautic.zender.whatsapp.contact.send.placeholders.help'|trans }}
+            <br>
+            {{ 'mautic.zender.whatsapp.contact.send.placeholders.fallback'|trans }}
+        </p>
+    </div>
+
+    {{ form_widget(form.request_id) }}
+
+    <p class="help-block">
+        {{ 'mautic.zender.whatsapp.contact.send.help'|trans }}
+        <br>
+        {{ 'mautic.zender.whatsapp.contact.send.permission_note'|trans }}
+    </p>
+
+    {{ form_row(form.buttons) }}
+    {{ form_end(form) }}
+</div>

@@ -1,0 +1,151 @@
+{% extends '@MauticCore/Default/content.html.twig' %}
+
+{% block mauticContent %}zenderCampaignWhatsAppStatus{% endblock %}
+{% block headerTitle %}
+    {{ 'mautic.zender.whatsapp.campaign_status.title'|trans({
+        '%campaign%': campaign.name
+    }) }}
+{% endblock %}
+
+{% block content %}
+<div class="pa-md"
+     id="zender-campaign-whatsapp-status"
+     data-campaign-id="{{ campaign.id }}">
+
+    <div class="mb-md">
+        <a class="btn btn-default" href="{{ path('mautic_zender_control_index', {'campaigns_tab': 1}) }}">
+            <i class="ri-arrow-left-line"></i>
+            {{ 'mautic.zender.whatsapp.campaign_status.back'|trans }}
+        </a>
+    </div>
+
+    <div class="alert alert-info">
+        {{ 'mautic.zender.whatsapp.campaign_status.note'|trans }}
+    </div>
+
+    <div class="row mb-md">
+        {% set cards = {
+            'all': ['info', 'mautic.zender.whatsapp.campaign_status.filter.all'],
+            'sent_by_zender': ['success', 'mautic.zender.whatsapp.campaign_status.filter.sent_by_zender'],
+            'held': ['warning', 'mautic.zender.whatsapp.campaign_status.filter.held'],
+            'queued': ['info', 'mautic.zender.whatsapp.campaign_status.filter.queued'],
+            'retry_pending': ['warning', 'mautic.zender.whatsapp.campaign_status.filter.retry_pending'],
+            'failed': ['danger', 'mautic.zender.whatsapp.campaign_status.filter.failed']
+        } %}
+        {% for key, card in cards %}
+            <div class="col-sm-6 col-md-2 mb-sm">
+                <a class="panel panel-{{ card[0] }} db mb-0{% if (key == 'all' and status_filter is null) or status_filter == key %} bg-light{% endif %}"
+                   href="{{ filter_urls[key] }}">
+                    <div class="panel-body text-center">
+                        <div class="fs-24 fw-sb">
+                            {{ summary[key]|default(0) }}
+                        </div>
+                        <div>{{ card[1]|trans }}</div>
+                    </div>
+                </a>
+            </div>
+        {% endfor %}
+    </div>
+
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <strong>
+                {{ 'mautic.zender.whatsapp.campaign_status.table.title'|trans }}
+            </strong>
+            <span class="pull-right label label-info">
+                {{ status_page.total }}
+            </span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>{{ 'mautic.zender.whatsapp.campaign_status.column.contact'|trans }}</th>
+                        <th>{{ 'mautic.zender.whatsapp.campaign_status.column.status'|trans }}</th>
+                        <th>{{ 'mautic.zender.whatsapp.campaign_status.column.action'|trans }}</th>
+                        <th>{{ 'mautic.zender.whatsapp.campaign_status.column.queued_at'|trans }}</th>
+                        <th>{{ 'mautic.zender.whatsapp.campaign_status.column.last_activity'|trans }}</th>
+                        <th class="text-center">{{ 'mautic.zender.whatsapp.campaign_status.column.attempts'|trans }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in status_page.items %}
+                        {% set status_classes = {
+                            'sent_by_zender': 'success',
+                            'held': 'warning',
+                            'queued': 'info',
+                            'retry_pending': 'warning',
+                            'failed': 'danger'
+                        } %}
+                        <tr data-visible-status="{{ row.visible_status }}">
+                            <td>
+                                <a href="{{ row.contact_url }}">
+                                    <strong>{{ row.contact_name }}</strong>
+                                </a>
+                                <br>
+                                <small class="text-muted">
+                                    #{{ row.contact_id }}
+                                    {% if row.contact_phone_last4 %}
+                                        — ••••{{ row.contact_phone_last4 }}
+                                    {% endif %}
+                                </small>
+                            </td>
+                            <td>
+                                <span class="label label-{{ status_classes[row.visible_status]|default('default') }}">
+                                    {{ ('mautic.zender.whatsapp.campaign_status.state.' ~ row.visible_status)|trans }}
+                                </span>
+                            </td>
+                            <td>
+                                <strong>
+                                    {{ row.message_name ?: 'mautic.zender.whatsapp.timeline.unnamed'|trans }}
+                                </strong>
+                                {% if row.campaign_action_name %}
+                                    <br>
+                                    <small class="text-muted">
+                                        {{ row.campaign_action_name }}
+                                    </small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ row.queued_at ? row.queued_at|date('Y-m-d H:i') : '—' }}
+                            </td>
+                            <td>
+                                {{ row.last_activity_at ? row.last_activity_at|date('Y-m-d H:i') : '—' }}
+                            </td>
+                            <td class="text-center">
+                                {{ row.attempt_count }}
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted pa-md">
+                                {{ 'mautic.zender.whatsapp.campaign_status.empty'|trans }}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if previous_url or next_url %}
+        <div class="text-center mt-md">
+            {% if previous_url %}
+                <a class="btn btn-default" href="{{ previous_url }}">
+                    <i class="ri-arrow-left-line"></i>
+                    {{ 'mautic.zender.whatsapp.campaign_status.previous'|trans }}
+                </a>
+            {% endif %}
+            <span class="btn btn-link disabled">
+                {{ 'mautic.zender.whatsapp.campaign_status.page'|trans({'%page%': page}) }}
+            </span>
+            {% if next_url %}
+                <a class="btn btn-default" href="{{ next_url }}">
+                    {{ 'mautic.zender.whatsapp.campaign_status.next'|trans }}
+                    <i class="ri-arrow-right-line"></i>
+                </a>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

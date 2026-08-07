@@ -1,21 +1,17 @@
 <?php
 
-/*
- * @copyright   2016 Mautic Contributors. All rights reserved
- * @author      Mautic
- *
- * @link        http://mautic.org
- *
- * @license     GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
- */
+declare(strict_types=1);
 
 namespace MauticPlugin\MauticZenderBundle;
 
 use Mautic\PluginBundle\Bundle\PluginBundleBase;
+use MauticPlugin\MauticZenderBundle\DependencyInjection\MauticZenderExtension;
+use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 
-/**
- * Class MauticZenderBundle.
- */
-class MauticZenderBundle extends PluginBundleBase
+final class MauticZenderBundle extends PluginBundleBase
 {
+    public function getContainerExtension(): ?ExtensionInterface
+    {
+        return new MauticZenderExtension();
+    }
 }
