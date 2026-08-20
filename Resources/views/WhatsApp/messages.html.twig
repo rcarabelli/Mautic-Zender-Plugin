@@ -1894,6 +1894,14 @@
                                                         <i class="ri-calendar-schedule-line"></i>
                                                         {{ 'mautic.zender.whatsapp.messages.segment_schedule.button'|trans }}
                                                     </button>
+                                                    <button type="button"
+                                                            class="btn btn-success"
+                                                            id="zender-whatsapp-segment-send-now-button"
+                                                            data-segment-ids="{{ segment_preview.segment_ids|join(',')|e('html_attr') }}"
+                                                            data-confirm="{{ 'mautic.zender.whatsapp.messages.segment_send_now.confirm'|trans|e('html_attr') }}">
+                                                        <i class="ri-send-plane-line"></i>
+                                                        {{ 'mautic.zender.whatsapp.messages.segment_send_now.button'|trans }}
+                                                    </button>
                                                 </div>
 
                                                 <p class="help-block">
@@ -2379,6 +2387,9 @@ Mautic.updateWhatsAppDemoContactLookupListFilter = function (
     var enqueueButton = document.getElementById(
         'zender-whatsapp-segment-enqueue-button'
     );
+    var sendNowButton = document.getElementById(
+        'zender-whatsapp-segment-send-now-button'
+    );
     var progressBox = document.getElementById(
         'zender-whatsapp-segment-enqueue-progress'
     );
@@ -2817,99 +2828,117 @@ Mautic.updateWhatsAppDemoContactLookupListFilter = function (
         return state;
     }
 
+    async function startSegmentQueue(button, schedule) {
+        var selectedSegmentIds = getSelectedSegmentIds();
+        var messageId = messageInput
+            ? parseInt(messageInput.value, 10)
+            : 0;
+        var token = segmentQueueCsrfToken || '';
+
+        if (!schedule) {
+            showBox(
+                errorBox,
+                {{ 'mautic.zender.whatsapp.messages.segment_schedule.invalid'|trans|json_encode|raw }}
+            );
+
+            return;
+        }
+
+        if (
+            selectedSegmentIds.length === 0
+            || !messageId
+            || !token
+            || !window.confirm(
+                button.getAttribute('data-confirm')
+            )
+        ) {
+            return;
+        }
+
+        button.disabled = true;
+        hideBox(completeBox);
+        hideBox(errorBox);
+
+        var key = storageKey(
+            messageId,
+            selectedSegmentIds
+        );
+        var state = loadState(key);
+
+        if (
+            state
+            && !sameQueueSchedule(state, schedule)
+        ) {
+            clearState(key);
+            state = null;
+        }
+
+        state = state || {
+            operation_id: createOperationId(),
+            after_contact_id: 0,
+            totals: emptyTotals(),
+            available_at: schedule.available_at,
+            expires_at: schedule.expires_at
+        };
+
+        if (!state.operation_id) {
+            state.operation_id = createOperationId();
+        }
+
+        saveState(key, state);
+        showBox(progressBox, progressText(state.totals));
+
+        try {
+            await enqueueNextBatch(
+                enqueueEndpoint,
+                token,
+                messageId,
+                selectedSegmentIds,
+                key,
+                state
+            );
+        } catch (error) {
+            var errorReason = (
+                error
+                && typeof error.message === 'string'
+                && error.message !== ''
+            ) ? error.message : 'enqueue_failed';
+
+            if (window.console && window.console.error) {
+                window.console.error(
+                    'Zender segment queue preparation failed:',
+                    error
+                );
+            }
+
+            showBox(
+                errorBox,
+                {{ 'mautic.zender.whatsapp.messages.segment_send.error'|trans|json_encode|raw }}
+                + ' [' + errorReason + ']'
+            );
+        } finally {
+            syncDestination();
+        }
+    }
+
     if (enqueueButton) {
         enqueueButton.addEventListener('click', async function () {
-            var selectedSegmentIds = getSelectedSegmentIds();
-            var messageId = messageInput
-                ? parseInt(messageInput.value, 10)
-                : 0;
-            var token = segmentQueueCsrfToken || '';
-            var schedule = readQueueSchedule();
-
-            if (!schedule) {
-                showBox(
-                    errorBox,
-                    {{ 'mautic.zender.whatsapp.messages.segment_schedule.invalid'|trans|json_encode|raw }}
-                );
-
-                return;
-            }
-
-            if (
-                selectedSegmentIds.length === 0
-                || !messageId
-                || !token
-                || !window.confirm(
-                    enqueueButton.getAttribute('data-confirm')
-                )
-            ) {
-                return;
-            }
-
-            enqueueButton.disabled = true;
-            hideBox(completeBox);
-            hideBox(errorBox);
-
-            var key = storageKey(
-                messageId,
-                selectedSegmentIds
+            await startSegmentQueue(
+                enqueueButton,
+                readQueueSchedule()
             );
-            var state = loadState(key);
+        });
+    }
 
-            if (
-                state
-                && !sameQueueSchedule(state, schedule)
-            ) {
-                clearState(key);
-                state = null;
-            }
-
-            state = state || {
-                operation_id: createOperationId(),
-                after_contact_id: 0,
-                totals: emptyTotals(),
-                available_at: schedule.available_at,
-                expires_at: schedule.expires_at
-            };
-
-            if (!state.operation_id) {
-                state.operation_id = createOperationId();
-            }
-
-            saveState(key, state);
-            showBox(progressBox, progressText(state.totals));
-
-            try {
-                await enqueueNextBatch(
-                    enqueueEndpoint,
-                    token,
-                    messageId,
-                    selectedSegmentIds,
-                    key,
-                    state
-                );
-            } catch (error) {
-                var errorReason = (
-                    error
-                    && typeof error.message === 'string'
-                    && error.message !== ''
-                ) ? error.message : 'enqueue_failed';
-
-                if (window.console && window.console.error) {
-                    window.console.error(
-                        'Zender segment queue preparation failed:',
-                        error
-                    );
+    if (sendNowButton) {
+        sendNowButton.addEventListener('click', async function () {
+            await startSegmentQueue(
+                sendNowButton,
+                {
+                    available_at: new Date().toISOString(),
+                    expires_at: ''
                 }
-
-                showBox(
-                    errorBox,
-                    {{ 'mautic.zender.whatsapp.messages.segment_send.error'|trans|json_encode|raw }}
-                    + ' [' + errorReason + ']'
-                );
-            } finally {
-                syncDestination();
-            }
+            );
         });
     }
 

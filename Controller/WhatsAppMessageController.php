@@ -446,7 +446,7 @@ final class WhatsAppMessageController extends CommonController
         }
 
         $message = $this->messageRepository
-            ->findPublished($messageId);
+            ->find($messageId);
 
         if (
             null === $message

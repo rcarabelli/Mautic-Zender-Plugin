@@ -99,6 +99,9 @@ final class ZenderControlReadModel
             ] = max(0, (int) $quantity);
         }
 
+        $leadCountsByAccountId = $this->accountRepository
+            ->getLeadCountsByAccountId();
+
         $enabledByHash = [];
 
         foreach (
@@ -317,6 +320,10 @@ final class ZenderControlReadModel
                     (string) ($row['label'] ?? '')
                 ),
                 'account_hash' => $hash,
+                'lead_count' => max(
+                    0,
+                    (int) ($leadCountsByAccountId[$accountId] ?? 0)
+                ),
                 'phone_display' => '' === $phoneDigits
                     ? '—'
                     : '••••'.substr($phoneDigits, -4),

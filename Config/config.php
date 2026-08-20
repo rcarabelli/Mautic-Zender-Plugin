@@ -24,7 +24,7 @@ return [
     'name'         => 'Zender',
     'description'  => 'WhatsApp transport through Zender with 7 Cats controlled dispatch.',
     'author'       => 'renato.carabelli@7catstudio.com',
-    'version'      => '2.2.1',
+    'version'      => '2.2.2',
     'release_date' => '2026-08-02',
     'license'      => 'GNU/GPLv3',
     'homepage'     => 'https://github.com/rcarabelli/Mautic-Zender-Plugin',

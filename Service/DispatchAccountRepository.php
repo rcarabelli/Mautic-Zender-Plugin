@@ -90,6 +90,40 @@ final class DispatchAccountRepository
         return $rows;
     }
 
+    /**
+     * @return array<string,int>
+     */
+    public function getLeadCountsByAccountId(): array
+    {
+        $rows = $this->connection->fetchAllAssociative(
+            'SELECT id_whatsapp_in_zender AS account_id,
+                    COUNT(*) AS lead_count
+             FROM '.MAUTIC_TABLE_PREFIX.'leads
+             WHERE id_whatsapp_in_zender IS NOT NULL
+               AND TRIM(id_whatsapp_in_zender) <> \'\'
+             GROUP BY id_whatsapp_in_zender'
+        );
+
+        $counts = [];
+
+        foreach ($rows as $row) {
+            $accountId = trim(
+                (string) ($row['account_id'] ?? '')
+            );
+
+            if ('' === $accountId) {
+                continue;
+            }
+
+            $counts[$accountId] = max(
+                0,
+                (int) ($row['lead_count'] ?? 0)
+            );
+        }
+
+        return $counts;
+    }
+
     public function getAllIds(): array
     {
         return array_map(

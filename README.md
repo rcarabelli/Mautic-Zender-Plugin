@@ -1,7 +1,7 @@
 # Mautic WhatsApp Channel — Zender Transport
 
 **Technical bundle:** `MauticZenderBundle`  
-**Current version:** `2.2.1`  
+**Current version:** `2.2.2`  
 **License:** GNU GPLv3  
 **Requirements:** Mautic `>= 6.0.5`, PHP `>= 8.2`
 
@@ -505,6 +505,25 @@ For AI spintax issues, check:
 - model loading
 - protected Mautic tokens
 - generated-result validation
+
+## Version 2.2.2 operator workflow fixes
+
+Version 2.2.2 keeps the 2.2.1 clean-install baseline and publishes the
+production-validated operator improvements added after that release:
+
+- Zender Control now shows a **Leads** column for managed accounts, counting
+  Mautic contacts currently assigned to each exact Zender account ID.
+- Manual segment sending can enqueue the selected reusable WhatsApp message
+  without requiring the message to be published as a Mautic SMS object.
+- Manual segment broadcasts now include a **Send now** action in addition to
+  the existing scheduling workflow.
+- English and Spanish interface strings were updated for these operator-facing
+  controls.
+
+The transport semantics remain unchanged: the contact's fixed
+`id_whatsapp_in_zender` association determines the Zender account, and Zender
+`sent` continues to mean **Enviado por Zender**, not WhatsApp delivery or read
+confirmation.
 
 ## Version 2.2.1 clean-install portability
 

@@ -3289,6 +3289,7 @@
                                 <th>{{ 'mautic.zender.mautic.account'|trans }}</th>
                                 <th>{{ 'mautic.zender.associated.number'|trans }}</th>
                                 <th>{{ 'mautic.zender.zender.unique'|trans }}</th>
+                                <th class="text-right">{{ 'mautic.zender.leads'|trans }}</th>
                                 <th>{{ 'mautic.zender.connection'|trans }}</th>
                                 <th>{{ 'mautic.zender.linked'|trans }}</th>
                                 <th class="text-right">{{ 'mautic.zender.pending'|trans }}</th>
@@ -3327,6 +3328,7 @@
                                             </span>
                                         {% endif %}
                                     </td>
+                                    <td class="text-right">{{ account.lead_count|default(0) }}</td>
                                     <td>
                                         {% if account.live_status == 'connected' %}
                                             <span class="label label-success">
